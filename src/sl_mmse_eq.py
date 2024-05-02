@@ -76,7 +76,6 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
     return eq_gain_all, eq_outp_all
 
 def check_mmse_eq(val, ref):
-    
     v_abserr = np.abs(ref - val)
     v_absref = np.abs(ref)
     max_val = v_abserr.max()
@@ -93,8 +92,6 @@ def check_mmse_eq(val, ref):
         print(f"  SNR: {snr:f} dB")
     else:
         print("   Bit-exact")
-
-    pass
 
 
 if __name__ == '__main__':

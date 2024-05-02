@@ -9,4 +9,4 @@ def read_file(fname, dtype):
     return a
 
 def write_file(fname, data, dtype):
-    data.flatten().astype(dtype).tofile(filename)
+    data.flatten().astype(dtype).tofile(fname)
