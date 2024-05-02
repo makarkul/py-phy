@@ -13,19 +13,17 @@ def sl_mmse_equ_leaf(hx, rx, nv_matrix, valid_res):
         A = np.matmul(np.conjugate(h), np.transpose(h)) 
         tempM = np.add(A, nv_matrix)
         B = np.linalg.inv(tempM)
-        temp = np.clip(
-                np.real(
-                    np.diag(
-                        np.matmul(B, A)
-                    )
-                ), -1e3, 0.9999
-              )
-        eq_gain[:, re] = temp.copy()
+        eq_gain[:, re] = np.clip(
+                            np.real(
+                                np.diag(
+                                    np.matmul(B, A)
+                                    )
+                                ), -1e3, 0.9999
+                            )
 
         BH = np.matmul(B, np.conjugate(h))
         r = rx[:, re]
-        eq = np.matmul(BH, r)
-        eq_outp[:, re] = eq.copy()
+        eq_outp[:, re] = np.matmul(BH, r)
 
     return eq_gain, eq_outp
 
@@ -63,15 +61,14 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
                 _eq_outp = np.full((ntx, nre), 0, dtype=np.csingle)
                 step_size = valid_res >> 3
                 for re in range(0, valid_res, step_size):
-                    _eq_gain_chunk, _eq_outp_chunk = sl_mmse_equ_leaf(hx[sym, :, :, re:re+step_size], 
+                    _eq_gain[:, re:re+step_size], _eq_outp[:, re:re+step_size] = \
+                        sl_mmse_equ_leaf(hx[sym, :, :, re:re+step_size], 
                                 rx[sym, :, re:re+step_size], 
                                 nv_matrix, 
                                 step_size)
-                    _eq_gain[:, re:re+step_size] = _eq_gain_chunk.copy()
-                    _eq_outp[:, re:re+step_size] = _eq_outp_chunk.copy()
 
-                eq_gain_sym[sym, :, :] = _eq_gain.copy()
-                eq_outp_sym[sym, :, :] = _eq_outp.copy()
+                eq_gain_sym[sym, :, :] = _eq_gain
+                eq_outp_sym[sym, :, :] = _eq_outp
 
         eq_gain_all = np.append(eq_gain_all, eq_gain_sym)
         eq_outp_all = np.append(eq_outp_all, eq_outp_sym)
