@@ -1,5 +1,5 @@
 import numpy as np
-import os
+import time
 import utils
 
 def sl_mmse_equ_leaf(args):
@@ -109,7 +109,10 @@ if __name__ == '__main__':
               "valid_res": 3264, #272 * 12
               "data_syms": [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1]
               }
+
+    start = time.perf_counter()
     gain, out = sl_mmse_equ(rx_data, H, noise_var, params)
+    end = time.perf_counter()
 
     ref = np.transpose(
             np.reshape(
@@ -118,3 +121,5 @@ if __name__ == '__main__':
             )
           )
     check_mmse_eq(np.transpose(np.reshape(out, (-1, params["nre"]))), ref)
+
+    print("Elapsed = {}s".format((end - start)))
