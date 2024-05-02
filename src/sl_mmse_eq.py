@@ -6,7 +6,7 @@ def sl_mmse_equ_leaf(hx, rx, nv_matrix, valid_res):
     ntx, nrx, nre = hx.shape
 
     eq_gain = np.full((ntx, nre), 0, dtype=np.csingle)
-    eq_outp  = np.full((ntx, nre), 0, dtype=np.csingle)
+    eq_outp = np.full((ntx, nre), 0, dtype=np.csingle)
 
     for re in range(0, valid_res):
         h = hx[:, :, re]
@@ -46,8 +46,10 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
     nv_slot_len = ntx * 2 # noise variance is stored as  [snr, noise_var]
 
     for slot in range(nslots):
-        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(nsym, ntx, nrx, nre)
-        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(nsym, nrx, nre)
+        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(nsym, ntx, 
+                nrx, nre)
+        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(nsym, 
+                nrx, nre)
         nv = noise_var[slot * nv_slot_len : (slot + 1) * nv_slot_len].reshape(ntx, 2)
 
         nv_matrix = np.multiply(nv[0][1], np.eye(ntx, dtype=np.csingle))
@@ -57,7 +59,17 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
 
         for sym in range(nsym):
             if data_syms[sym]:
-                _eq_gain, _eq_outp = sl_mmse_equ_leaf(hx[sym, :, :, :], rx[sym, :, :], nv_matrix, valid_res)
+                _eq_gain = np.full((ntx, nre), 0, dtype=np.csingle)
+                _eq_outp = np.full((ntx, nre), 0, dtype=np.csingle)
+                step_size = valid_res >> 3
+                for re in range(0, valid_res, step_size):
+                    _eq_gain_chunk, _eq_outp_chunk = sl_mmse_equ_leaf(hx[sym, :, :, re:re+step_size], 
+                                rx[sym, :, re:re+step_size], 
+                                nv_matrix, 
+                                step_size)
+                    _eq_gain[:, re:re+step_size] = _eq_gain_chunk.copy()
+                    _eq_outp[:, re:re+step_size] = _eq_outp_chunk.copy()
+
                 eq_gain_sym[sym, :, :] = _eq_gain.copy()
                 eq_outp_sym[sym, :, :] = _eq_outp.copy()
 
