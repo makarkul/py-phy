@@ -2,6 +2,33 @@ import numpy as np
 import os
 import utils
 
+def sl_mmse_equ_leaf(hx, rx, nv_matrix, valid_res):
+    ntx, nrx, nre = hx.shape
+
+    eq_gain = np.full((ntx, nre), 0, dtype=np.csingle)
+    eq_outp  = np.full((ntx, nre), 0, dtype=np.csingle)
+
+    for re in range(0, valid_res):
+        h = hx[:, :, re]
+        A = np.matmul(np.conjugate(h), np.transpose(h)) 
+        tempM = np.add(A, nv_matrix)
+        B = np.linalg.inv(tempM)
+        temp = np.clip(
+                np.real(
+                    np.diag(
+                        np.matmul(B, A)
+                    )
+                ), -1e3, 0.9999
+              )
+        eq_gain[:, re] = temp.copy()
+
+        BH = np.matmul(B, np.conjugate(h))
+        r = rx[:, re]
+        eq = np.matmul(BH, r)
+        eq_outp[:, re] = eq.copy()
+
+    return eq_gain, eq_outp
+
 def sl_mmse_equ(rx_data, H, noise_var, params):
     nslots = params["nslots"]
     ntx = params["ntx"]
@@ -12,7 +39,7 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
     data_syms = params["data_syms"]
 
     eq_gain_all = np.empty((0, 0), dtype=np.single)
-    eq_out_all = np.empty((0, 0), dtype=np.csingle)
+    eq_outp_all = np.empty((0, 0), dtype=np.csingle)
 
     hx_slot_len = nsym * ntx * nrx * nre
     rx_slot_len = nsym * nrx * nre
@@ -25,36 +52,19 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
 
         nv_matrix = np.multiply(nv[0][1], np.eye(ntx, dtype=np.csingle))
 
-        eq_gain = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
-        eq_out  = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+        eq_gain_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+        eq_outp_sym  = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
 
         for sym in range(nsym):
             if data_syms[sym]:
-                for re in range(0, valid_res):
-                    h = hx[sym, :, :, re]
-                    # Note on conj here!! in Matrix H' means it is conj-xpose
-                    A = np.matmul(np.conjugate(h), np.transpose(h)) 
-                    tempM = np.add(A, nv_matrix)
-                    B = np.linalg.inv(tempM)
-                    temp = np.clip(
-                            np.real(
-                                np.diag(
-                                    np.matmul(B, A))
-                                )
-                            , -1e3, 0.9999
-                          )
+                _eq_gain, _eq_outp = sl_mmse_equ_leaf(hx[sym, :, :, :], rx[sym, :, :], nv_matrix, valid_res)
+                eq_gain_sym[sym, :, :] = _eq_gain.copy()
+                eq_outp_sym[sym, :, :] = _eq_outp.copy()
 
-                    eq_gain[sym, :, re] = temp.copy()
+        eq_gain_all = np.append(eq_gain_all, eq_gain_sym)
+        eq_outp_all = np.append(eq_outp_all, eq_outp_sym)
 
-                    BH = np.matmul(B, np.conjugate(h))
-                    r = rx[sym, :, re]
-                    eq = np.matmul(BH, r)
-                    eq_out[sym, :, re] = eq.copy()
-
-        eq_gain_all = np.append(eq_gain_all, eq_gain)
-        eq_out_all = np.append(eq_out_all, eq_out)
-
-    return eq_gain_all, eq_out_all
+    return eq_gain_all, eq_outp_all
 
 def check_mmse_eq(val, ref):
     
