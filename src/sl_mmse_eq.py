@@ -1,3 +1,4 @@
+import multiprocessing
 import numpy as np
 import time
 import utils
@@ -60,15 +61,16 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
             if data_syms[sym]:
                 _eq_gain = np.full((ntx, nre), 0, dtype=np.csingle)
                 _eq_outp = np.full((ntx, nre), 0, dtype=np.csingle)
-                step_size = valid_res >> 3
-                for re in range(0, valid_res, step_size):
-                    (_eq_gain[:, re:re+step_size], _eq_outp[:, re:re+step_size]) = \
-                        sl_mmse_equ_leaf((
-                                hx[sym, :, :, re:re+step_size], 
-                                rx[sym, :, re:re+step_size], 
-                                nv_matrix, 
-                                step_size)
-                            )
+                step_size = valid_res >> 2
+   
+                with multiprocessing.Pool(processes=4) as pool:
+                    results = pool.map(sl_mmse_equ_leaf, [(hx[sym, :, :, re:re+step_size], rx[sym, :, re:re+step_size],
+                        nv_matrix, step_size) for re in range(0, valid_res, step_size)])
+
+                    for i, (_tmp_gain, _tmp_outp) in enumerate(results):
+                        _eq_gain[:, step_size*i:step_size*(i+1)] = _tmp_gain
+                        _eq_outp[:, step_size*i:step_size*(i+1)] = _tmp_outp
+
                 eq_gain_sym[sym, :, :] = _eq_gain
                 eq_outp_sym[sym, :, :] = _eq_outp
 
