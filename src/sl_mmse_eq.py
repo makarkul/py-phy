@@ -2,7 +2,8 @@ import numpy as np
 import os
 import utils
 
-def sl_mmse_equ_leaf(hx, rx, nv_matrix, valid_res):
+def sl_mmse_equ_leaf(args):
+    (hx, rx, nv_matrix, valid_res) = args
     ntx, nrx, nre = hx.shape
 
     eq_gain = np.full((ntx, nre), 0, dtype=np.csingle)
@@ -25,7 +26,7 @@ def sl_mmse_equ_leaf(hx, rx, nv_matrix, valid_res):
         r = rx[:, re]
         eq_outp[:, re] = np.matmul(BH, r)
 
-    return eq_gain, eq_outp
+    return (eq_gain, eq_outp)
 
 def sl_mmse_equ(rx_data, H, noise_var, params):
     nslots = params["nslots"]
@@ -61,12 +62,13 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
                 _eq_outp = np.full((ntx, nre), 0, dtype=np.csingle)
                 step_size = valid_res >> 3
                 for re in range(0, valid_res, step_size):
-                    _eq_gain[:, re:re+step_size], _eq_outp[:, re:re+step_size] = \
-                        sl_mmse_equ_leaf(hx[sym, :, :, re:re+step_size], 
+                    (_eq_gain[:, re:re+step_size], _eq_outp[:, re:re+step_size]) = \
+                        sl_mmse_equ_leaf((
+                                hx[sym, :, :, re:re+step_size], 
                                 rx[sym, :, re:re+step_size], 
                                 nv_matrix, 
                                 step_size)
-
+                            )
                 eq_gain_sym[sym, :, :] = _eq_gain
                 eq_outp_sym[sym, :, :] = _eq_outp
 
