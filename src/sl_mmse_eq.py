@@ -28,8 +28,8 @@ def sl_mmse_equ_re_leaf(args):
     hx, rx, nv_matrix, valid_res = args
     ntx, nrx, nre = hx.shape
 
-    eq_gain_valid_res = np.full((ntx, nre), 0, dtype=np.csingle)
-    eq_outp_valid_res = np.full((ntx, nre), 0, dtype=np.csingle)
+    eq_gain_valid_res = np.full((ntx, valid_res), 0, dtype=np.csingle)
+    eq_outp_valid_res = np.full((ntx, valid_res), 0, dtype=np.csingle)
 
     for re in range(0, valid_res):
         h = hx[:, :, re]
