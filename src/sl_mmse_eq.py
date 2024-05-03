@@ -3,6 +3,40 @@ import numpy as np
 import time
 import utils
 
+def sl_mmse_eq_slot_leaf(args):
+    hx, rx, nv_matrix, slot, valid_res, data_syms = args
+    nsym, ntx, nrx, nre = hx.shape
+
+    eq_gain_slot = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+    eq_outp_slot = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+
+    '''
+    with multiprocessing.Pool(processes=4) as pool:
+        results = pool.map(sl_mmse_equ_sym_leaf, [(hx[sym, :, :, :],
+                            rx[sym, :, :],
+                            nv_matrix,
+                            sym,
+                            valid_res,
+                            data_syms[sym]) for sym in range(nsym)]
+                        )
+        for i, result in enumerate(results):
+            (eq_gain_slot[i, :, :], eq_outp_slot[i, :, :]) = result
+        
+    '''
+    for sym in range(nsym):
+        (eq_gain_slot[sym, :, :], eq_outp_slot[sym, :, :]) =\
+            sl_mmse_equ_sym_leaf(
+                    (hx[sym, :, :, :],
+                     rx[sym, :, :],
+                     nv_matrix,
+                     sym,
+                     valid_res,
+                     data_syms[sym])
+                    )
+
+    return (eq_gain_slot, eq_outp_slot)
+
+
 def sl_mmse_equ_sym_leaf(args):
     hx, rx, nv_matrix, sym, valid_res, data_sym = args
     ntx, nrx, nre = hx.shape
@@ -66,45 +100,35 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
     rx_slot_len = nsym * nrx * nre
     nv_slot_len = ntx * 2 # noise variance is stored as  [snr, noise_var]
 
+    hx_shape = (nsym, ntx, nrx, nre)
+    rx_shape = (nsym, nrx, nre)
+    nv_shape = (ntx, 2)
+    
+    with multiprocessing.Pool(processes=4) as pool:
+        results = pool.map(sl_mmse_eq_slot_leaf, [(
+                H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(hx_shape),
+                rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(rx_shape),
+                noise_var[slot * nv_slot_len : (slot + 1) * nv_slot_len].reshape(nv_shape)[0][1] * np.eye(ntx,dtype=np.csingle),
+                slot,
+                valid_res,
+                data_syms) for slot in range(nslots)])
+
+    for i, result in enumerate(results):
+        eq_gain_all = np.append(eq_gain_all, result[0])
+        eq_outp_all = np.append(eq_outp_all, result[1])
+
+    '''
     for slot in range(nslots):
-        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(nsym, ntx, 
-                nrx, nre)
-        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(nsym, 
-                nrx, nre)
-        nv = noise_var[slot * nv_slot_len : (slot + 1) * nv_slot_len].reshape(ntx, 2)
+        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(hx_shape)
+        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(rx_shape)
+        nv_matrix = noise_var[slot * nv_slot_len : (slot + 1) * nv_slot_len].reshape(nv_shape)[0][1] * np.eye(ntx,
+                dtype=np.csingle)
 
-        nv_matrix = np.multiply(nv[0][1], np.eye(ntx, dtype=np.csingle))
+        eq_gain_slot, eq_outp_slot = sl_mmse_eq_slot_leaf((hx, rx, nv_matrix, slot, valid_res, data_syms))
 
-        eq_gain_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
-        eq_outp_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
-
-        with multiprocessing.Pool(processes=4) as pool:
-            results = pool.map(sl_mmse_equ_sym_leaf, [(hx[sym, :, :, :],
-                                rx[sym, :, :],
-                                nv_matrix,
-                                sym,
-                                valid_res,
-                                data_syms[sym]) for sym in range(nsym)]
-                            )
-            for i, result in enumerate(results):
-                (eq_gain_sym[i, :, :], eq_outp_sym[i, :, :]) = result
-            
-        '''
-
-        for sym in range(nsym):
-            (eq_gain_sym[sym, :, :], eq_outp_sym[sym, :, :]) =\
-                sl_mmse_equ_sym_leaf(
-                        (hx[sym, :, :, :],
-                         rx[sym, :, :],
-                         nv_matrix,
-                         sym,
-                         valid_res,
-                         data_syms[sym])
-                        )
-        '''
-
-        eq_gain_all = np.append(eq_gain_all, eq_gain_sym)
-        eq_outp_all = np.append(eq_outp_all, eq_outp_sym)
+        eq_gain_all = np.append(eq_gain_all, eq_gain_slot)
+        eq_outp_all = np.append(eq_outp_all, eq_outp_slot)
+    '''
 
     return eq_gain_all, eq_outp_all
 
@@ -151,6 +175,7 @@ if __name__ == '__main__':
                 (-1, params["nre"])
             )
           )
+
     check_mmse_eq(np.transpose(np.reshape(out, (-1, params["nre"]))), ref)
 
     print("Elapsed = {}s".format((end - start)))
