@@ -4,16 +4,17 @@ import time
 import utils
 
 def sl_mmse_equ_sym_leaf(args):
-    (hx, rx, nv_matrix, sym, valid_res) = args
+    hx, rx, nv_matrix, sym, valid_res, data_sym = args
     ntx, nrx, nre = hx.shape
 
     eq_gain_sym = np.full((ntx, nre), 0, dtype=np.csingle)
     eq_outp_sym = np.full((ntx, nre), 0, dtype=np.csingle)
 
-    step_size = valid_res >> 2
+    if data_sym:
+        step_size = valid_res >> 2
 
-    for re in range(0, valid_res, step_size):
-        eq_gain_sym[:, re:re+step_size], eq_outp_sym[:, re:re+step_size] =\
+        for re in range(0, valid_res, step_size):
+            eq_gain_sym[:, re:re+step_size], eq_outp_sym[:, re:re+step_size] =\
                 sl_mmse_equ_re_leaf(
                     (hx[:, :, re:re+step_size],
                         rx[:, re:re+step_size],
@@ -24,7 +25,7 @@ def sl_mmse_equ_sym_leaf(args):
     return (eq_gain_sym, eq_outp_sym)
 
 def sl_mmse_equ_re_leaf(args):
-    (hx, rx, nv_matrix, valid_res) = args
+    hx, rx, nv_matrix, valid_res = args
     ntx, nrx, nre = hx.shape
 
     eq_gain_valid_res = np.full((ntx, nre), 0, dtype=np.csingle)
@@ -77,16 +78,30 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
         eq_gain_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
         eq_outp_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
 
-        for sym in range(nsym):
-            if data_syms[sym]:
-                (eq_gain_sym[sym, :, :], eq_outp_sym[sym, :, :]) =\
-                    sl_mmse_equ_sym_leaf(
-                            (hx[sym, :, :, :],
-                             rx[sym, :, :],
-                             nv_matrix,
-                             sym,
-                             valid_res)
+        with multiprocessing.Pool(processes=4) as pool:
+            results = pool.map(sl_mmse_equ_sym_leaf, [(hx[sym, :, :, :],
+                                rx[sym, :, :],
+                                nv_matrix,
+                                sym,
+                                valid_res,
+                                data_syms[sym]) for sym in range(nsym)]
                             )
+            for i, result in enumerate(results):
+                (eq_gain_sym[i, :, :], eq_outp_sym[i, :, :]) = result
+            
+        '''
+
+        for sym in range(nsym):
+            (eq_gain_sym[sym, :, :], eq_outp_sym[sym, :, :]) =\
+                sl_mmse_equ_sym_leaf(
+                        (hx[sym, :, :, :],
+                         rx[sym, :, :],
+                         nv_matrix,
+                         sym,
+                         valid_res,
+                         data_syms[sym])
+                        )
+        '''
 
         eq_gain_all = np.append(eq_gain_all, eq_gain_sym)
         eq_outp_all = np.append(eq_outp_all, eq_outp_sym)
