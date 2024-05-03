@@ -1,6 +1,53 @@
+import multiprocessing
 import numpy as np
-import os
+import time
 import utils
+
+def sl_mmse_equ_sym_leaf(args):
+    (hx, rx, nv_matrix, sym, valid_res) = args
+    ntx, nrx, nre = hx.shape
+
+    eq_gain_sym = np.full((ntx, nre), 0, dtype=np.csingle)
+    eq_outp_sym = np.full((ntx, nre), 0, dtype=np.csingle)
+
+    step_size = valid_res >> 2
+
+    for re in range(0, valid_res, step_size):
+        eq_gain_sym[:, re:re+step_size], eq_outp_sym[:, re:re+step_size] =\
+                sl_mmse_equ_re_leaf(
+                    (hx[:, :, re:re+step_size],
+                        rx[:, re:re+step_size],
+                        nv_matrix,
+                        step_size)
+                    )
+
+    return (eq_gain_sym, eq_outp_sym)
+
+def sl_mmse_equ_re_leaf(args):
+    (hx, rx, nv_matrix, valid_res) = args
+    ntx, nrx, nre = hx.shape
+
+    eq_gain_valid_res = np.full((ntx, nre), 0, dtype=np.csingle)
+    eq_outp_valid_res = np.full((ntx, nre), 0, dtype=np.csingle)
+
+    for re in range(0, valid_res):
+        h = hx[:, :, re]
+        A = np.matmul(np.conjugate(h), np.transpose(h)) 
+        tempM = np.add(A, nv_matrix)
+        B = np.linalg.inv(tempM)
+        eq_gain_valid_res[:, re] = np.clip(
+                                     np.real(
+                                        np.diag(
+                                            np.matmul(B, A)
+                                        )
+                                     ), -1e3, 0.9999
+                                   )
+
+        BH = np.matmul(B, np.conjugate(h))
+        r = rx[:, re]
+        eq_outp_valid_res[:, re] = np.matmul(BH, r)
+
+    return (eq_gain_valid_res, eq_outp_valid_res)
 
 def sl_mmse_equ(rx_data, H, noise_var, params):
     nslots = params["nslots"]
@@ -12,52 +59,41 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
     data_syms = params["data_syms"]
 
     eq_gain_all = np.empty((0, 0), dtype=np.single)
-    eq_out_all = np.empty((0, 0), dtype=np.csingle)
+    eq_outp_all = np.empty((0, 0), dtype=np.csingle)
 
     hx_slot_len = nsym * ntx * nrx * nre
     rx_slot_len = nsym * nrx * nre
     nv_slot_len = ntx * 2 # noise variance is stored as  [snr, noise_var]
 
     for slot in range(nslots):
-        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(nsym, ntx, nrx, nre)
-        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(nsym, nrx, nre)
+        hx = H[slot * hx_slot_len : (slot + 1) * hx_slot_len].reshape(nsym, ntx, 
+                nrx, nre)
+        rx = rx_data[slot * rx_slot_len : (slot + 1) * rx_slot_len].reshape(nsym, 
+                nrx, nre)
         nv = noise_var[slot * nv_slot_len : (slot + 1) * nv_slot_len].reshape(ntx, 2)
 
         nv_matrix = np.multiply(nv[0][1], np.eye(ntx, dtype=np.csingle))
 
-        eq_gain = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
-        eq_out  = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+        eq_gain_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
+        eq_outp_sym = np.full((nsym, ntx, nre), 0, dtype=np.csingle)
 
         for sym in range(nsym):
             if data_syms[sym]:
-                for re in range(0, valid_res):
-                    h = hx[sym, :, :, re]
-                    # Note on conj here!! in Matrix H' means it is conj-xpose
-                    A = np.matmul(np.conjugate(h), np.transpose(h)) 
-                    tempM = np.add(A, nv_matrix)
-                    B = np.linalg.inv(tempM)
-                    temp = np.clip(
-                            np.real(
-                                np.diag(
-                                    np.matmul(B, A))
-                                )
-                            , -1e3, 0.9999
-                          )
+                (eq_gain_sym[sym, :, :], eq_outp_sym[sym, :, :]) =\
+                    sl_mmse_equ_sym_leaf(
+                            (hx[sym, :, :, :],
+                             rx[sym, :, :],
+                             nv_matrix,
+                             sym,
+                             valid_res)
+                            )
 
-                    eq_gain[sym, :, re] = temp.copy()
+        eq_gain_all = np.append(eq_gain_all, eq_gain_sym)
+        eq_outp_all = np.append(eq_outp_all, eq_outp_sym)
 
-                    BH = np.matmul(B, np.conjugate(h))
-                    r = rx[sym, :, re]
-                    eq = np.matmul(BH, r)
-                    eq_out[sym, :, re] = eq.copy()
-
-        eq_gain_all = np.append(eq_gain_all, eq_gain)
-        eq_out_all = np.append(eq_out_all, eq_out)
-
-    return eq_gain_all, eq_out_all
+    return eq_gain_all, eq_outp_all
 
 def check_mmse_eq(val, ref):
-    
     v_abserr = np.abs(ref - val)
     v_absref = np.abs(ref)
     max_val = v_abserr.max()
@@ -75,8 +111,6 @@ def check_mmse_eq(val, ref):
     else:
         print("   Bit-exact")
 
-    pass
-
 
 if __name__ == '__main__':
     rx_data = utils.read_file('..\\test\\data\\Dmp_01.bin', np.csingle)
@@ -91,7 +125,10 @@ if __name__ == '__main__':
               "valid_res": 3264, #272 * 12
               "data_syms": [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1]
               }
+
+    start = time.perf_counter()
     gain, out = sl_mmse_equ(rx_data, H, noise_var, params)
+    end = time.perf_counter()
 
     ref = np.transpose(
             np.reshape(
@@ -100,3 +137,5 @@ if __name__ == '__main__':
             )
           )
     check_mmse_eq(np.transpose(np.reshape(out, (-1, params["nre"]))), ref)
+
+    print("Elapsed = {}s".format((end - start)))
