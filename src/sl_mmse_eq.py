@@ -113,9 +113,9 @@ def sl_mmse_equ(rx_data, H, noise_var, params):
                 valid_res,
                 data_syms) for slot in range(nslots)])
 
-    for i, result in enumerate(results):
-        eq_gain_all = np.append(eq_gain_all, result[0])
-        eq_outp_all = np.append(eq_outp_all, result[1])
+        for i, result in enumerate(results):
+            eq_gain_all = np.append(eq_gain_all, result[0])
+            eq_outp_all = np.append(eq_outp_all, result[1])
 
     '''
     for slot in range(nslots):
